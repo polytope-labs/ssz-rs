@@ -303,7 +303,7 @@ where
 
 impl<T, const N: usize> FromIterator<T> for Vector<T, N>
 where
-    T: SimpleSerialize + Default,
+    T: SimpleSerialize + Default + Debug,
 {
     // Builds a `Vector<T, N>` from the iterator given by `iter`.
     // If `iter` is more than `N` elements, then only the first `N` are taken.

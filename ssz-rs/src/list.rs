@@ -329,7 +329,7 @@ where
 
 impl<T, const N: usize> FromIterator<T> for List<T, N>
 where
-    T: SimpleSerialize,
+    T: SimpleSerialize + Debug,
 {
     fn from_iter<I>(iter: I) -> Self
     where
