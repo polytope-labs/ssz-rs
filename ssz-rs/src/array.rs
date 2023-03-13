@@ -7,10 +7,13 @@ use crate::{
     de::{deserialize_homogeneous_composite, Deserialize, DeserializeError},
     error::{InstanceError, TypeError},
     lib::*,
-    merkleization::{merkleize, pack, MerkleizationError, Merkleized, Node, BYTES_PER_CHUNK},
+    merkleization::{
+        merkleize, pack, MerkleizationError, Merkleized, Node, SszReflect, BYTES_PER_CHUNK,
+    },
     ser::{serialize_composite, Serialize, SerializeError},
-    SimpleSerialize, Sized,
+    ElementsType, SimpleSerialize, Sized, SszTypeClass,
 };
+use as_any::AsAny;
 
 macro_rules! define_ssz_for_array_of_size {
     ($n: literal) => {
@@ -96,6 +99,27 @@ macro_rules! define_ssz_for_array_of_size {
         {
             fn is_composite_type() -> bool {
                 T::is_composite_type()
+            }
+        }
+
+        impl<T> SszReflect for [T; $n]
+        where
+            T: SimpleSerialize + SszReflect + AsAny,
+        {
+            fn ssz_type_class(&self) -> SszTypeClass {
+                SszTypeClass::Elements(ElementsType::List)
+            }
+
+            fn list_iterator(
+                &self,
+            ) -> Option<Box<dyn Iterator<Item = &dyn SszReflect> + '_>> {
+                Some(Box::new(self.iter().map(|t| t as &dyn SszReflect)))
+            }
+
+            fn list_iterator_mut(
+                &mut self,
+            ) -> Option<Box<dyn Iterator<Item = &mut dyn SszReflect> + '_>> {
+                Some(Box::new(self.iter_mut().map(|t| t as &mut dyn SszReflect)))
             }
         }
     };

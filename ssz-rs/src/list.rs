@@ -4,11 +4,12 @@ use crate::{
     lib::*,
     merkleization::{
         merkleize, mix_in_length, pack, MerkleCache, MerkleizationError, Merkleized, Node,
-        BYTES_PER_CHUNK,
+        SszReflect, BYTES_PER_CHUNK,
     },
     ser::{serialize_composite, Serialize, SerializeError},
-    SimpleSerialize, Sized,
+    ElementsType, SimpleSerialize, Sized, SszTypeClass,
 };
+use as_any::AsAny;
 #[cfg(feature = "serde")]
 use serde::ser::SerializeSeq;
 #[cfg(feature = "serde")]
@@ -308,6 +309,23 @@ where
 }
 
 impl<T, const N: usize> SimpleSerialize for List<T, N> where T: SimpleSerialize {}
+
+impl<T, const N: usize> SszReflect for List<T, N>
+where
+    T: SimpleSerialize + SszReflect + AsAny,
+{
+    fn ssz_type_class(&self) -> SszTypeClass {
+        SszTypeClass::Elements(ElementsType::List)
+    }
+
+    fn list_iterator_mut(&mut self) -> Option<Box<dyn Iterator<Item = &mut dyn SszReflect> + '_>> {
+        Some(Box::new(self.iter_mut().map(|t| t as &mut dyn SszReflect)))
+    }
+
+    fn list_iterator(&self) -> Option<Box<dyn Iterator<Item = &dyn SszReflect> + '_>> {
+        Some(Box::new(self.iter().map(|t| t as &dyn SszReflect)))
+    }
+}
 
 #[cfg(test)]
 mod tests {

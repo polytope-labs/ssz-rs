@@ -2,9 +2,9 @@ use crate::{
     de::{Deserialize, DeserializeError},
     error::TypeError,
     lib::*,
-    merkleization::{merkleize, pack_bytes, MerkleizationError, Merkleized, Node},
+    merkleization::{merkleize, pack_bytes, MerkleizationError, Merkleized, Node, SszReflect},
     ser::{Serialize, SerializeError},
-    SimpleSerialize, Sized,
+    ElementsType, SimpleSerialize, Sized, SszTypeClass,
 };
 use bitvec::{
     field::BitField,
@@ -103,7 +103,7 @@ impl<const N: usize> Bitvector<N> {
         })
     }
 
-    fn pack_bits(&self) -> Result<Vec<u8>, MerkleizationError> {
+    pub(crate) fn pack_bits(&self) -> Result<Vec<u8>, MerkleizationError> {
         let mut data = vec![];
         let _ = self.serialize(&mut data)?;
         pack_bytes(&mut data);
@@ -193,6 +193,17 @@ impl<const N: usize> Merkleized for Bitvector<N> {
 }
 
 impl<const N: usize> SimpleSerialize for Bitvector<N> {}
+
+impl<const N: usize> SszReflect for Bitvector<N> {
+    fn ssz_type_class(&self) -> SszTypeClass {
+        SszTypeClass::Bits(ElementsType::Vector)
+    }
+
+    fn list_iterator_mut(&mut self) -> Option<Box<dyn Iterator<Item = &mut dyn SszReflect> + '_>> {
+        None
+        // todo: Some(Box::new(self.iter_mut().map(|mut t| t.as_mut() as &mut dyn SszReflect)))
+    }
+}
 
 impl<const N: usize> FromIterator<bool> for Bitvector<N> {
     // NOTE: only takes the first `N` values from `iter` and

@@ -3,11 +3,13 @@ use crate::{
     error::{Error, InstanceError, TypeError},
     lib::*,
     merkleization::{
-        merkleize, pack, MerkleCache, MerkleizationError, Merkleized, Node, BYTES_PER_CHUNK,
+        merkleize, pack, MerkleCache, MerkleizationError, Merkleized, Node, SszReflect,
+        BYTES_PER_CHUNK,
     },
     ser::{serialize_composite, Serialize, SerializeError},
-    SimpleSerialize, Sized,
+    ElementsType, SimpleSerialize, Sized, SszTypeClass,
 };
+use as_any::AsAny;
 #[cfg(feature = "serde")]
 use serde::ser::SerializeSeq;
 #[cfg(feature = "serde")]
@@ -135,6 +137,15 @@ where
 
     fn deref(&self) -> &Self::Target {
         &self.data
+    }
+}
+
+impl<T, const N: usize> DerefMut for Vector<T, N>
+where
+    T: SimpleSerialize,
+{
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.data
     }
 }
 
@@ -281,6 +292,23 @@ where
 }
 
 impl<T, const N: usize> SimpleSerialize for Vector<T, N> where T: SimpleSerialize + Clone {}
+
+impl<T, const N: usize> SszReflect for Vector<T, N>
+where
+    T: SimpleSerialize + SszReflect + AsAny + Clone,
+{
+    fn ssz_type_class(&self) -> SszTypeClass {
+        SszTypeClass::Elements(ElementsType::Vector)
+    }
+
+    fn list_iterator_mut(&mut self) -> Option<Box<dyn Iterator<Item = &mut dyn SszReflect> + '_>> {
+        Some(Box::new(self.deref_mut().iter_mut().map(|t| t as &mut dyn SszReflect)))
+    }
+
+    fn list_iterator(&self) -> Option<Box<dyn Iterator<Item = &dyn SszReflect> + '_>> {
+        Some(Box::new(self.iter().map(|t| t as &dyn SszReflect)))
+    }
+}
 
 #[cfg(test)]
 mod tests {
