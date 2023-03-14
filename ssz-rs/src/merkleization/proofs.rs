@@ -263,9 +263,9 @@ pub fn verify_merkle_multiproof(
 
 #[cfg(test)]
 mod tests {
-    use hex_literal::hex;
-    use crate::{get_generalized_index, List, SszVariableOrIndex, Vector};
     use super::*;
+    use crate::{get_generalized_index, List, SszVariableOrIndex, Vector};
+    use hex_literal::hex;
 
     fn decode_node_from_hex(hex: &str) -> Node {
         Node::from_bytes(hex::decode(hex).expect("is hex").try_into().expect("is right size"))
@@ -302,8 +302,8 @@ mod tests {
             hex!("382ba9638ce263e802593b387538faefbaed106e9f51ce793d405f161b105ee6"),
             hex!("c78009fdf07fc56a11f122370658a353aaa542ed63e44c4bc15ff4cd105ab33c"),
         ]
-            .into_iter()
-            .collect::<Vec<_>>();
+        .into_iter()
+        .collect::<Vec<_>>();
         let mut list = List::<[u8; 32], 4>::default();
         let mut vector = Vector::<[u8; 32], 9>::default();
         for item in items {
