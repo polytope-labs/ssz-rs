@@ -1,5 +1,5 @@
 use super::field_inspect::{FieldsInspect, FieldsIter};
-use crate::{ElementsType, Merkleized, Serialize, SszTypeClass, U256};
+use crate::{lib::*, ElementsType, Merkleized, Serialize, SszTypeClass, U256};
 use as_any::AsAny;
 use core::any::{Any, TypeId};
 

@@ -110,9 +110,7 @@ macro_rules! define_ssz_for_array_of_size {
                 SszTypeClass::Elements(ElementsType::List)
             }
 
-            fn list_iterator(
-                &self,
-            ) -> Option<Box<dyn Iterator<Item = &dyn SszReflect> + '_>> {
+            fn list_iterator(&self) -> Option<Box<dyn Iterator<Item = &dyn SszReflect> + '_>> {
                 Some(Box::new(self.iter().map(|t| t as &dyn SszReflect)))
             }
 
