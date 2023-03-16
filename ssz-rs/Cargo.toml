@@ -21,7 +21,7 @@ std = [
     "bitvec/default",
     "sha2/default",
     "num-bigint/default",
-    "sp-runtime/std",
+    "codec/std"
 ]
 serde = ["dep:serde", "dep:hex"]
 
@@ -35,8 +35,9 @@ hex = {version = "0.4.3", optional = true }
 as-any = "0.3.0"
 itertools = { version = "0.10.5", default-features = false }
 num-bigint = { version ="0.4.3", default-features = false }
-codec = { package = "parity-scale-codec", version = "3.2.2", default-features = false }
-sp-runtime = { default-features = false, git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.38" }
+codec = { package = "parity-scale-codec", version = "3.4.0", default-features = false, features = [
+    "derive"
+] }
 
 [dev-dependencies]
 hex-literal = "0.3.3"
