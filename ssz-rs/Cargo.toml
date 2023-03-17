@@ -24,6 +24,7 @@ std = [
     "codec/std"
 ]
 serde = ["dep:serde", "dep:hex"]
+codec = ["codec/derive"]
 
 [dependencies]
 thiserror = "1.0.25"

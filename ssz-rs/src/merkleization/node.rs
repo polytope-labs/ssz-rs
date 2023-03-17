@@ -6,7 +6,8 @@ use core::{
     ops::{Index, IndexMut},
 };
 
-#[derive(Default, Clone, Copy, PartialEq, Eq, SimpleSerialize, codec::Encode, codec::Decode)]
+#[derive(Default, Clone, Copy, PartialEq, Eq, SimpleSerialize)]
+#[cfg_attr(feature = "codec", derive(codec::Encode, codec::Decode))]
 pub struct Node(pub(crate) [u8; 32]);
 
 #[cfg(feature = "serde")]
