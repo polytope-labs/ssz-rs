@@ -14,7 +14,7 @@ macro_rules! define_uint {
                 false
             }
 
-            fn size_hint() -> usize {
+            fn ssz_size_hint() -> usize {
                 (<$uint>::BITS / 8) as usize
             }
         }
@@ -138,7 +138,7 @@ impl Sized for U256 {
         false
     }
 
-    fn size_hint() -> usize {
+    fn ssz_size_hint() -> usize {
         32
     }
 }

@@ -16,9 +16,10 @@ use serde::ser::SerializeSeq;
 use std::marker::PhantomData;
 
 /// A homogenous collection of a variable number of values.
-#[derive(Clone)]
+#[derive(Clone, codec::Encode, codec::Decode)]
 pub struct List<T: SimpleSerialize, const N: usize> {
     data: Vec<T>,
+    #[codec(skip)]
     cache: MerkleCache,
 }
 
@@ -178,7 +179,7 @@ where
         true
     }
 
-    fn size_hint() -> usize {
+    fn ssz_size_hint() -> usize {
         0
     }
 }
@@ -221,7 +222,7 @@ where
         if T::is_composite_type() {
             element_count
         } else {
-            let encoded_length = T::size_hint() * element_count;
+            let encoded_length = T::ssz_size_hint() * element_count;
             (encoded_length + 31) / 32
         }
     }
@@ -247,7 +248,7 @@ where
             Ok(mix_in_length(&data_root, self.len()))
         } else {
             let chunks = pack(self)?;
-            let chunk_count = (N * T::size_hint() + 31) / 32;
+            let chunk_count = (N * T::ssz_size_hint() + 31) / 32;
             let data_root = merkleize(&chunks, Some(chunk_count))?;
             Ok(mix_in_length(&data_root, self.len()))
         }

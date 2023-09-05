@@ -17,7 +17,7 @@ impl<T: SimpleSerialize> Sized for Option<T> {
         true
     }
 
-    fn size_hint() -> usize {
+    fn ssz_size_hint() -> usize {
         0
     }
 }

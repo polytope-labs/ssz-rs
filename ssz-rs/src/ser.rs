@@ -95,7 +95,7 @@ pub fn serialize_composite<T: SimpleSerialize>(
     let mut fixed_lengths_sum = 0;
 
     for element in elements {
-        let mut buffer = Vec::with_capacity(T::size_hint());
+        let mut buffer = Vec::with_capacity(T::ssz_size_hint());
         element.serialize(&mut buffer)?;
 
         let buffer_len = buffer.len();

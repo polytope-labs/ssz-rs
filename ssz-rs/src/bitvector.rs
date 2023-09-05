@@ -10,6 +10,7 @@ use bitvec::{
     field::BitField,
     prelude::{BitVec, Lsb0},
 };
+use codec::{Error, Input, Output};
 
 fn byte_length(bound: usize) -> usize {
     (bound + 7) / 8
@@ -28,6 +29,30 @@ type BitvectorInner = BitVec<u8, Lsb0>;
 /// Refer: <https://stackoverflow.com/a/65462213>
 #[derive(PartialEq, Eq, Clone)]
 pub struct Bitvector<const N: usize>(BitvectorInner);
+
+impl<const N: usize> codec::Encode for Bitvector<N> {
+    fn encode_to<T: Output + ?core::marker::Sized>(&self, dest: &mut T) {
+        let mut bools = vec![];
+        for val in self.0.clone().into_iter() {
+            bools.push(val)
+        }
+        bools.encode_to(dest);
+    }
+}
+
+impl<const N: usize> codec::Decode for Bitvector<N> {
+    fn decode<I: Input>(input: &mut I) -> Result<Self, Error> {
+        let bools: Vec<bool> = codec::Decode::decode(input)?;
+        if bools.len() > N {
+            Err(Error::from("Encoded data too large"))?
+        }
+        let mut inner = BitvectorInner::new();
+        for val in bools {
+            inner.push(val)
+        }
+        Ok(Bitvector(inner))
+    }
+}
 
 #[cfg(feature = "serde")]
 impl<const N: usize> serde::Serialize for Bitvector<N> {
@@ -130,7 +155,7 @@ impl<const N: usize> Sized for Bitvector<N> {
         false
     }
 
-    fn size_hint() -> usize {
+    fn ssz_size_hint() -> usize {
         (N + 7) / 8
     }
 }
@@ -140,7 +165,7 @@ impl<const N: usize> Serialize for Bitvector<N> {
         if N == 0 {
             return Err(TypeError::InvalidBound(N).into())
         }
-        let bytes_to_write = Self::size_hint();
+        let bytes_to_write = Self::ssz_size_hint();
         buffer.reserve(bytes_to_write);
         for byte in self.chunks(8) {
             buffer.push(byte.load());
@@ -226,6 +251,7 @@ impl<const N: usize> FromIterator<bool> for Bitvector<N> {
 mod tests {
     use super::*;
     use crate::serialize;
+    use codec::{Decode, Encode};
 
     const COUNT: usize = 12;
 
@@ -277,6 +303,17 @@ mod tests {
         let mut buffer = vec![];
         let _ = input.serialize(&mut buffer).expect("can serialize");
         let recovered = Bitvector::<COUNT>::deserialize(&buffer).expect("can decode");
+        assert_eq!(input, recovered);
+    }
+
+    #[test]
+    fn check_parity_codec() {
+        let input = Bitvector::<COUNT>::from_iter(vec![
+            false, false, false, true, true, false, false, false, false, false, false, false,
+            false, false, false, true, true, false, false, false, false, false, false, false, true,
+        ]);
+        let encoded = input.encode();
+        let recovered = Bitvector::<COUNT>::decode(&mut &*encoded).expect("can decode");
         assert_eq!(input, recovered);
     }
 }

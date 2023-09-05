@@ -17,9 +17,10 @@ use std::marker::PhantomData;
 
 /// A homogenous collection of a fixed number of values.
 /// NOTE: a `Vector` of length `0` is illegal.
-#[derive(Clone)]
+#[derive(Clone, codec::Encode, codec::Decode)]
 pub struct Vector<T: SimpleSerialize, const N: usize> {
     data: Vec<T>,
+    #[codec(skip)]
     cache: MerkleCache,
 }
 
@@ -186,8 +187,8 @@ where
         T::is_variable_size()
     }
 
-    fn size_hint() -> usize {
-        T::size_hint() * N
+    fn ssz_size_hint() -> usize {
+        T::ssz_size_hint() * N
     }
 }
 
@@ -212,7 +213,7 @@ where
             return Err(TypeError::InvalidBound(N).into())
         }
         if !T::is_variable_size() {
-            let expected_length = N * T::size_hint();
+            let expected_length = N * T::ssz_size_hint();
             if encoding.len() < expected_length {
                 return Err(DeserializeError::ExpectedFurtherInput {
                     provided: encoding.len(),
@@ -245,7 +246,7 @@ where
         if T::is_composite_type() {
             N
         } else {
-            let encoded_length = Self::size_hint();
+            let encoded_length = Self::ssz_size_hint();
             (encoded_length + 31) / 32
         }
     }

@@ -94,7 +94,7 @@ fn derive_serialize_impl(data: &Data) -> TokenStream {
                 let field_type = &f.ty;
                 match &f.ident {
                     Some(field_name) => quote_spanned! { f.span() =>
-                        let mut element_buffer = Vec::with_capacity(<#field_type>::size_hint());
+                        let mut element_buffer = Vec::with_capacity(<#field_type>::ssz_size_hint());
                         self.#field_name.serialize(&mut element_buffer)?;
 
                         let buffer_len = element_buffer.len();
@@ -199,7 +199,7 @@ fn derive_deserialize_impl(data: &Data) -> TokenStream {
 
                             #BYTES_PER_LENGTH_OFFSET
                         } else {
-                            let encoded_length = <#field_type>::size_hint();
+                            let encoded_length = <#field_type>::ssz_size_hint();
                             let end = start + encoded_length;
                             let result = <#field_type>::deserialize(&encoding[start..end])?;
                             container.#field_name = result;
@@ -337,7 +337,7 @@ fn derive_size_hint_impl(data: &Data) -> TokenStream {
             let impl_by_field = fields.iter().map(|f| {
                 let field_type = &f.ty;
                 quote_spanned! { f.span() =>
-                    <#field_type>::size_hint()
+                    <#field_type>::ssz_size_hint()
                 }
             });
 
@@ -429,8 +429,8 @@ fn is_valid_none_identifier(ident: &Ident) -> bool {
 
 fn derive_fields_inspect(item: DeriveInput) -> (TokenStream, TokenStream, TokenStream) {
     let Data::Struct(strukt) = item.data else {
-		return (quote! { None }, quote! { None }, quote!());
-	};
+        return (quote! { None }, quote! { None }, quote!())
+    };
 
     let name = &item.ident;
     let name_string = name.to_string();
@@ -635,7 +635,7 @@ pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 #is_variable_size_impl
             }
 
-            fn size_hint() -> usize {
+            fn ssz_size_hint() -> usize {
                 #size_hint_impl
             }
         }
