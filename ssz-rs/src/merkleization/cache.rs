@@ -1,33 +1,41 @@
-use crate::merkleization::Node;
-use bitvec::prelude::{bitvec, BitVec, Lsb0};
+use crate::{lib::Vec, merkleization::Node};
+use bitvec::prelude::{bitvec, Lsb0};
 
 #[derive(Default, Debug, Clone)]
 pub struct Cache {
-    leaf_count: usize,
-    dirty_leaves: BitVec,
+    leaf_count: u64,
+    dirty_leaves: Vec<u8>,
     root: Node,
 }
 
 impl Cache {
     pub fn with_leaves(leaf_count: usize) -> Self {
-        Self { leaf_count, dirty_leaves: bitvec![usize, Lsb0; 1; leaf_count], ..Default::default() }
+        Self {
+            leaf_count: leaf_count as u64,
+            dirty_leaves: bitvec![usize, Lsb0; 1; leaf_count]
+                .into_vec()
+                .iter()
+                .map(|&x| x as u8)
+                .collect(),
+            ..Default::default()
+        }
     }
 
     pub fn valid(&self) -> bool {
-        let has_dirty_leaves = self.dirty_leaves.any();
-        let did_resize = self.leaf_count != self.dirty_leaves.len();
+        let has_dirty_leaves = self.dirty_leaves.len() > 0;
+        let did_resize = self.leaf_count != self.dirty_leaves.len() as u64;
         !(has_dirty_leaves || did_resize)
     }
 
     pub fn invalidate(&mut self, leaf_index: usize) {
-        if let Some(mut bit) = self.dirty_leaves.get_mut(leaf_index) {
+        if let Some(bit) = self.dirty_leaves.get_mut(leaf_index) {
             // TODO: unconditionally access bit
-            *bit = true;
+            *bit = 1;
         }
     }
 
     pub fn resize(&mut self, bound: usize) {
-        self.dirty_leaves.resize(bound, true);
+        self.dirty_leaves.resize(bound, 1);
     }
 
     pub fn update(&mut self, root: Node) {

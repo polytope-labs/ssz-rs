@@ -71,7 +71,7 @@ where
     // is this type variable or fixed size?
     fn is_variable_size() -> bool;
 
-    fn size_hint() -> usize;
+    fn ssz_size_hint() -> usize;
 }
 
 #[derive(Ord, PartialOrd, Eq, PartialEq, Debug)]

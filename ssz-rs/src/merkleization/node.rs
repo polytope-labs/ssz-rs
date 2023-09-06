@@ -6,8 +6,8 @@ use core::{
     ops::{Index, IndexMut},
 };
 
-#[derive(Default, Clone, Copy, PartialEq, Eq, SimpleSerialize)]
-pub struct Node(pub(crate) [u8; 32]);
+#[derive(Default, Clone, Copy, PartialEq, Eq, SimpleSerialize, codec::Encode, codec::Decode)]
+pub struct Node(pub [u8; 32]);
 
 #[cfg(feature = "serde")]
 impl serde::Serialize for Node {

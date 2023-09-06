@@ -9,6 +9,7 @@ use crate::{
     ElementsType, SimpleSerialize, Sized, SszTypeClass,
 };
 use bitvec::prelude::{BitVec, Lsb0};
+use codec::{Error, Input, Output};
 
 // +1 for length bit
 fn byte_length(bound: usize) -> usize {
@@ -20,6 +21,31 @@ type BitlistInner = BitVec<u8, Lsb0>;
 /// A homogenous collection of a variable number of boolean values.
 #[derive(PartialEq, Eq, Clone)]
 pub struct Bitlist<const N: usize>(BitlistInner);
+
+impl<const N: usize> codec::Encode for Bitlist<N> {
+    fn encode_to<T: Output + ?core::marker::Sized>(&self, dest: &mut T) {
+        let mut booleans = vec![];
+        let clone = self.clone();
+        for val in clone.0.into_iter() {
+            booleans.push(val)
+        }
+        booleans.encode_to(dest);
+    }
+}
+
+impl<const N: usize> codec::Decode for Bitlist<N> {
+    fn decode<I: Input>(input: &mut I) -> Result<Self, Error> {
+        let booleans: Vec<bool> = codec::Decode::decode(input)?;
+        if booleans.len() > N {
+            Err(Error::from("Encoded data too large"))?
+        }
+        let mut inner = BitlistInner::new();
+        for val in booleans {
+            inner.push(val)
+        }
+        Ok(Bitlist(inner))
+    }
+}
 
 #[cfg(feature = "serde")]
 impl<const N: usize> serde::Serialize for Bitlist<N> {
@@ -146,7 +172,7 @@ impl<const N: usize> Sized for Bitlist<N> {
         true
     }
 
-    fn size_hint() -> usize {
+    fn ssz_size_hint() -> usize {
         0
     }
 }
@@ -229,6 +255,7 @@ impl<const N: usize> FromIterator<bool> for Bitlist<N> {
 mod tests {
     use super::*;
     use crate::serialize;
+    use codec::{Decode, Encode};
 
     const COUNT: usize = 256;
 
@@ -298,6 +325,17 @@ mod tests {
         let mut buffer = vec![];
         let _ = input.serialize(&mut buffer).expect("can serialize");
         let recovered = Bitlist::<COUNT>::deserialize(&buffer).expect("can decode");
+        assert_eq!(input, recovered);
+    }
+
+    #[test]
+    fn check_parity_codec() {
+        let input = Bitlist::<COUNT>::from_iter(vec![
+            false, false, false, true, true, false, false, false, false, false, false, false,
+            false, false, false, true, true, false, false, false, false, false, false, false, true,
+        ]);
+        let encoded = input.encode();
+        let recovered = Bitlist::<COUNT>::decode(&mut &*encoded).expect("can decode");
         assert_eq!(input, recovered);
     }
 }

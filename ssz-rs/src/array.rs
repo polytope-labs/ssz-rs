@@ -25,8 +25,8 @@ macro_rules! define_ssz_for_array_of_size {
                 T::is_variable_size()
             }
 
-            fn size_hint() -> usize {
-                T::size_hint() * $n
+            fn ssz_size_hint() -> usize {
+                T::ssz_size_hint() * $n
             }
         }
 
@@ -52,7 +52,7 @@ macro_rules! define_ssz_for_array_of_size {
                 }
 
                 if !T::is_variable_size() {
-                    let expected_length = $n * T::size_hint();
+                    let expected_length = $n * T::ssz_size_hint();
                     if encoding.len() < expected_length {
                         return Err(DeserializeError::ExpectedFurtherInput {
                             provided: encoding.len(),

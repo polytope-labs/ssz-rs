@@ -11,7 +11,7 @@ impl Sized for bool {
         false
     }
 
-    fn size_hint() -> usize {
+    fn ssz_size_hint() -> usize {
         1
     }
 }

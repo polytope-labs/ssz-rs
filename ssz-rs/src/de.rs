@@ -54,7 +54,7 @@ fn deserialize_fixed_homogeneous_composite<T>(encoding: &[u8]) -> Result<Vec<T>,
 where
     T: SimpleSerialize,
 {
-    let remainder = encoding.len() % T::size_hint();
+    let remainder = encoding.len() % T::ssz_size_hint();
     if remainder != 0 {
         return Err(DeserializeError::AdditionalInput {
             provided: encoding.len(),
@@ -63,7 +63,7 @@ where
     }
 
     let mut elements = vec![];
-    for chunk in encoding.chunks_exact(T::size_hint()) {
+    for chunk in encoding.chunks_exact(T::ssz_size_hint()) {
         let element = T::deserialize(chunk)?;
         elements.push(element);
     }
