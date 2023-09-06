@@ -5,6 +5,7 @@ use crate::{
     ser::{Serialize, SerializeError},
     SimpleSerialize, Sized, SszTypeClass,
 };
+use codec::{Error, Input, Output};
 use num_bigint::BigUint;
 
 macro_rules! define_uint {
@@ -104,6 +105,20 @@ impl U256 {
     }
 }
 
+impl codec::Encode for U256 {
+    fn encode_to<T: Output + ?core::marker::Sized>(&self, dest: &mut T) {
+        let bytes = self.to_bytes_le();
+        bytes.encode_to(dest)
+    }
+}
+
+impl codec::Decode for U256 {
+    fn decode<I: Input>(input: &mut I) -> Result<Self, Error> {
+        let bytes: Vec<u8> = codec::Decode::decode(input)?;
+        U256::try_from_bytes_le(&bytes).map_err(|_| Error::from("Invalid encoding"))
+    }
+}
+
 impl From<u64> for U256 {
     fn from(x: u64) -> Self {
         Self(x.into())
@@ -193,6 +208,7 @@ impl SszReflect for U256 {
 mod tests {
     use super::*;
     use crate::serialize;
+    use codec::{Decode, Encode};
 
     #[test]
     fn encode_uints() {
@@ -304,5 +320,13 @@ mod tests {
             let result = U256::deserialize(&bytes).expect("can encode");
             assert_eq!(result, expected);
         }
+    }
+
+    #[test]
+    fn uint256_parity_codec() {
+        let value = U256::from(3448899920u64);
+        let encoded = value.encode();
+        let decoded = U256::decode(&mut &*encoded).unwrap();
+        assert_eq!(value, decoded)
     }
 }
