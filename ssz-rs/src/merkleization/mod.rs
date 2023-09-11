@@ -10,6 +10,7 @@ use crate::{
 };
 use sha2::{Digest, Sha256};
 
+#[cfg(feature = "std")]
 pub use cache::Cache as MerkleCache;
 pub use field_inspect::*;
 pub use generalized_index::*;

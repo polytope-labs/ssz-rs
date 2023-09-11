@@ -1,3 +1,4 @@
+#![cfg(feature = "std")]
 use crate::{lib::Vec, merkleization::Node};
 use bitvec::prelude::{bitvec, Lsb0};
 
@@ -22,6 +23,9 @@ impl Cache {
     }
 
     pub fn valid(&self) -> bool {
+        if self.leaf_count == 0 || self.root == Node::default() || self.dirty_leaves.len() == 0 {
+            return false
+        }
         let has_dirty_leaves = self.dirty_leaves.len() > 0;
         let did_resize = self.leaf_count != self.dirty_leaves.len() as u64;
         !(has_dirty_leaves || did_resize)
