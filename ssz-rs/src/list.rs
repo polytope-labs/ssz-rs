@@ -1,10 +1,12 @@
+#[cfg(feature = "std")]
+use crate::merkleization::MerkleCache;
 use crate::{
     de::{deserialize_homogeneous_composite, Deserialize, DeserializeError},
     error::{Error, InstanceError},
     lib::*,
     merkleization::{
-        merkleize, mix_in_length, pack, MerkleCache, MerkleizationError, Merkleized, Node,
-        SszReflect, BYTES_PER_CHUNK,
+        merkleize, mix_in_length, pack, MerkleizationError, Merkleized, Node, SszReflect,
+        BYTES_PER_CHUNK,
     },
     ser::{serialize_composite, Serialize, SerializeError},
     ElementsType, SimpleSerialize, Sized, SszTypeClass,
@@ -19,7 +21,8 @@ use std::marker::PhantomData;
 #[derive(Clone, codec::Encode, codec::Decode)]
 pub struct List<T: SimpleSerialize, const N: usize> {
     data: Vec<T>,
-    #[codec(skip)]
+    #[cfg(feature = "std")]
+    #[cfg_attr(feature = "std", codec(skip))]
     cache: MerkleCache,
 }
 
@@ -125,8 +128,12 @@ where
             let len = data.len();
             Err((data, Error::Instance(InstanceError::Bounded { bound: N, provided: len })))
         } else {
-            let leaf_count = Self::get_leaf_count(data.len());
-            Ok(Self { data, cache: MerkleCache::with_leaves(leaf_count) })
+            let _leaf_count = Self::get_leaf_count(data.len());
+            Ok(Self {
+                data,
+                #[cfg(feature = "std")]
+                cache: MerkleCache::with_leaves(_leaf_count),
+            })
         }
     }
 }
@@ -164,9 +171,15 @@ impl<T, const N: usize> IndexMut<usize> for List<T, N>
 where
     T: SimpleSerialize,
 {
+    #[cfg(feature = "std")]
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         let leaf_index = Self::get_leaf_index(index);
         self.cache.invalidate(leaf_index);
+        &mut self.data[index]
+    }
+
+    #[cfg(not(feature = "std"))]
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.data[index]
     }
 }
@@ -227,6 +240,7 @@ where
         }
     }
 
+    #[cfg(feature = "std")]
     fn get_leaf_index(index: usize) -> usize {
         if T::is_composite_type() {
             index
@@ -254,24 +268,47 @@ where
         }
     }
 
+    #[cfg(feature = "std")]
     pub fn push(&mut self, element: T) {
         self.data.push(element);
         self.cache.resize(self.len());
     }
 
+    #[cfg(not(feature = "std"))]
+    pub fn push(&mut self, element: T) {
+        self.data.push(element);
+    }
+
+    #[cfg(feature = "std")]
     pub fn pop(&mut self) -> Option<T> {
         let element = self.data.pop();
         self.cache.resize(self.len());
         element
     }
 
+    #[cfg(not(feature = "std"))]
+    pub fn pop(&mut self) -> Option<T> {
+        let element = self.data.pop();
+        element
+    }
+
+    #[cfg(feature = "std")]
     pub fn clear(&mut self) {
         self.data.clear();
         self.cache.resize(0);
     }
 
+    #[cfg(not(feature = "std"))]
+    pub fn clear(&mut self) {
+        self.data.clear();
+    }
+
     pub fn iter_mut(&mut self) -> IterMut<'_, T, N> {
-        IterMut { inner: self.data.iter_mut().enumerate(), cache: &mut self.cache }
+        IterMut {
+            inner: self.data.iter_mut().enumerate(),
+            #[cfg(feature = "std")]
+            cache: &mut self.cache,
+        }
     }
 }
 
@@ -280,6 +317,7 @@ where
     T: SimpleSerialize,
 {
     inner: Enumerate<slice::IterMut<'a, T>>,
+    #[cfg(feature = "std")]
     cache: &'a mut MerkleCache,
 }
 
@@ -289,10 +327,20 @@ where
 {
     type Item = &'a mut T;
 
+    #[cfg(feature = "std")]
     fn next(&mut self) -> Option<Self::Item> {
         if let Some((index, next)) = self.inner.next() {
             let leaf_index = List::<T, N>::get_leaf_index(index);
             self.cache.invalidate(leaf_index);
+            Some(next)
+        } else {
+            None
+        }
+    }
+
+    #[cfg(not(feature = "std"))]
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some((_, next)) = self.inner.next() {
             Some(next)
         } else {
             None

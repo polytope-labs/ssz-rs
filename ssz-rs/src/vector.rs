@@ -1,10 +1,11 @@
+#[cfg(feature = "std")]
+use crate::merkleization::MerkleCache;
 use crate::{
     de::{deserialize_homogeneous_composite, Deserialize, DeserializeError},
     error::{Error, InstanceError, TypeError},
     lib::*,
     merkleization::{
-        merkleize, pack, MerkleCache, MerkleizationError, Merkleized, Node, SszReflect,
-        BYTES_PER_CHUNK,
+        merkleize, pack, MerkleizationError, Merkleized, Node, SszReflect, BYTES_PER_CHUNK,
     },
     ser::{serialize_composite, Serialize, SerializeError},
     ElementsType, SimpleSerialize, Sized, SszTypeClass,
@@ -20,7 +21,8 @@ use std::marker::PhantomData;
 #[derive(Clone, codec::Encode, codec::Decode)]
 pub struct Vector<T: SimpleSerialize, const N: usize> {
     data: Vec<T>,
-    #[codec(skip)]
+    #[cfg(feature = "std")]
+    #[cfg_attr(feature = "std", codec(skip))]
     cache: MerkleCache,
 }
 
@@ -97,8 +99,12 @@ impl<T: SimpleSerialize, const N: usize> TryFrom<Vec<T>> for Vector<T, N> {
             let len = data.len();
             Err((data, Error::Instance(InstanceError::Exact { required: N, provided: len })))
         } else {
-            let leaf_count = Self::get_leaf_count();
-            Ok(Self { data, cache: MerkleCache::with_leaves(leaf_count) })
+            let _leaf_count = Self::get_leaf_count();
+            Ok(Self {
+                data,
+                #[cfg(feature = "std")]
+                cache: MerkleCache::with_leaves(_leaf_count),
+            })
         }
     }
 }
@@ -172,9 +178,15 @@ impl<T, const N: usize> IndexMut<usize> for Vector<T, N>
 where
     T: SimpleSerialize,
 {
+    #[cfg(feature = "std")]
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         let leaf_index = self.get_leaf_index(index);
         self.cache.invalidate(leaf_index);
+        &mut self.data[index]
+    }
+
+    #[cfg(not(feature = "std"))]
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.data[index]
     }
 }
@@ -251,6 +263,7 @@ where
         }
     }
 
+    #[cfg(feature = "std")]
     fn get_leaf_index(&self, index: usize) -> usize {
         if T::is_composite_type() {
             index
@@ -280,6 +293,7 @@ impl<T, const N: usize> Merkleized for Vector<T, N>
 where
     T: SimpleSerialize,
 {
+    #[cfg(feature = "std")]
     fn hash_tree_root(&mut self) -> Result<Node, MerkleizationError> {
         if !self.cache.valid() {
             // which leaves are dirty
@@ -289,6 +303,11 @@ where
             self.cache.update(root);
         }
         Ok(self.cache.root())
+    }
+
+    #[cfg(not(feature = "std"))]
+    fn hash_tree_root(&mut self) -> Result<Node, MerkleizationError> {
+        self.compute_hash_tree_root()
     }
 }
 
