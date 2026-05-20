@@ -26,8 +26,9 @@ pub use error::Error;
 pub use list::List;
 pub use merkleization::{
     calculate_merkle_root, calculate_multi_merkle_root, field_inspect, generate_proof,
-    get_generalized_index, is_valid_merkle_branch, verify_merkle_multiproof, verify_merkle_proof,
-    GeneralizedIndex, MerkleizationError, Merkleized, Node, SszReflect, SszVariableOrIndex,
+    get_generalized_index, get_helper_indices, is_valid_merkle_branch, verify_merkle_multiproof,
+    verify_merkle_proof, GeneralizedIndex, MerkleizationError, Merkleized, Node, SszReflect,
+    SszVariableOrIndex,
 };
 pub use ser::{Serialize, SerializeError};
 pub use uint::U256;
