@@ -163,7 +163,11 @@ fn get_path_indices(tree_index: &GeneralizedIndex) -> Vec<GeneralizedIndex> {
     result
 }
 
-fn get_helper_indices(indices: &[GeneralizedIndex]) -> Vec<GeneralizedIndex> {
+/// Returns the set of sibling (helper) generalized indices required to verify a multi-Merkle
+/// proof for `indices`. Exposed so callers can validate proof shape before invoking
+/// [`calculate_multi_merkle_root`] — that function panics on a short proof, so verifiers that
+/// accept untrusted input should pre-check `proof.len() == get_helper_indices(indices).len()`.
+pub fn get_helper_indices(indices: &[GeneralizedIndex]) -> Vec<GeneralizedIndex> {
     let mut all_helper_indices = BTreeSet::new();
     let mut all_path_indices = BTreeSet::new();
 
