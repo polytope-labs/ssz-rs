@@ -102,6 +102,9 @@ pub fn generate_proof<T: SimpleSerialize + SszReflect>(
                     .downcast_ref::<Bitvector<{ usize::MAX }>>()
                     .expect("Ssz Type class is Bitlist; qed")
                     .pack_bits()?,
+                // Progressive bits hang off the spine rather than a padded tree, so the virtual
+                // tree built below would describe the wrong shape.
+                ElementsType::ProgressiveList => Err(MerkleizationError::CannotMerkleize)?,
             };
 
             let mut leaves = vec![];
@@ -113,6 +116,13 @@ pub fn generate_proof<T: SimpleSerialize + SszReflect>(
             leaves
         }
     };
+
+    // `merkleize_to_virtual_tree` pads the leaves out to a balanced tree, which is not the shape
+    // a progressive type merkleizes into. Refuse rather than hand back a proof that verifies
+    // against a root nobody computes.
+    if matches!(type_class, SszTypeClass::Elements(ElementsType::ProgressiveList)) {
+        return Err(MerkleizationError::CannotMerkleize)
+    }
 
     let virtual_tree = merkleize_to_virtual_tree(leaves);
     let indices = indices.into_iter().cloned().map(GeneralizedIndex).collect::<Vec<_>>();
