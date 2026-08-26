@@ -2,7 +2,7 @@ mod cache;
 pub mod field_inspect;
 mod generalized_index;
 mod node;
-mod progressive;
+pub(crate) mod progressive;
 mod proofs;
 
 use crate::{

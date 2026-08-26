@@ -4,7 +4,8 @@
 use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote, quote_spanned};
 use syn::{
-    parse_macro_input, spanned::Spanned, Data, DeriveInput, Fields, Generics, Ident, Index, Member,
+    parse_macro_input, spanned::Spanned, Data, DeriveInput, Fields, Generics, Ident, Index, Lit,
+    Member, Meta, NestedMeta,
 };
 
 // NOTE: copied here from `ssz_rs` crate as it is unlikely to change
@@ -356,7 +357,11 @@ fn derive_size_hint_impl(data: &Data) -> TokenStream {
     }
 }
 
-fn derive_merkleization_impl(data: &Data) -> TokenStream {
+fn derive_merkleization_impl(data: &Data, active_fields: Option<&Vec<bool>>) -> TokenStream {
+    if let Some(active_fields) = active_fields {
+        return derive_progressive_merkleization_impl(data, active_fields)
+    }
+
     match data {
         Data::Struct(ref data) => {
             let fields = match data.fields {
@@ -420,6 +425,105 @@ fn derive_merkleization_impl(data: &Data) -> TokenStream {
             }
         }
         Data::Union(..) => unreachable!("data was already validated to exclude union types"),
+    }
+}
+
+/// Read `#[ssz(progressive_container)]`, optionally with an explicit
+/// `active_fields = "1101"` mask, off the type.
+///
+/// A field a later fork drops keeps its slot as a `0` rather than letting everything after it
+/// shift up, so the mask is how a type says which of the 256 slots its fields occupy. With no
+/// mask every declared field is active, which is what every container in the spec looks like
+/// today.
+fn parse_progressive_container(input: &DeriveInput, field_count: usize) -> Option<Vec<bool>> {
+    let meta = input.attrs.iter().find(|attr| attr.path.is_ident("ssz"))?.parse_meta().ok()?;
+    let list = match meta {
+        Meta::List(list) => list,
+        _ => return None,
+    };
+
+    let mut is_progressive = false;
+    let mut active_fields = None;
+    for nested in list.nested {
+        let meta = match nested {
+            NestedMeta::Meta(meta) => meta,
+            _ => continue,
+        };
+        match meta {
+            // the bare `#[ssz(progressive_container)]`, every declared field active
+            Meta::Path(path) if path.is_ident("progressive_container") => is_progressive = true,
+            // `#[ssz(progressive_container(active_fields = "1101"))]`
+            Meta::List(inner) if inner.path.is_ident("progressive_container") => {
+                is_progressive = true;
+                for item in inner.nested {
+                    if let NestedMeta::Meta(Meta::NameValue(pair)) = item {
+                        if pair.path.is_ident("active_fields") {
+                            if let Lit::Str(mask) = pair.lit {
+                                active_fields = Some(
+                                    mask.value()
+                                        .chars()
+                                        .map(|bit| match bit {
+                                            '1' => true,
+                                            '0' => false,
+                                            _ => {
+                                                panic!("active_fields must be a string of 0 and 1")
+                                            }
+                                        })
+                                        .collect::<Vec<_>>(),
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if !is_progressive {
+        return None
+    }
+
+    let active_fields = active_fields.unwrap_or_else(|| vec![true; field_count]);
+    assert_eq!(
+        active_fields.iter().filter(|active| **active).count(),
+        field_count,
+        "active_fields must have one set bit per declared field",
+    );
+    assert!(
+        active_fields.last().copied().unwrap_or(false),
+        "active_fields cannot end in 0, the trailing slot carries no field",
+    );
+    Some(active_fields)
+}
+
+fn derive_progressive_merkleization_impl(data: &Data, active_fields: &[bool]) -> TokenStream {
+    let fields = match data {
+        Data::Struct(ref data) => match data.fields {
+            Fields::Named(ref fields) => &fields.named,
+            Fields::Unnamed(ref fields) => &fields.unnamed,
+            _ => unimplemented!("this type of struct cannot be a progressive container"),
+        },
+        _ => panic!("only structs can be progressive containers"),
+    };
+
+    let push_by_field = fields.iter().enumerate().map(|(i, f)| {
+        let member = match &f.ident {
+            Some(name) => Member::Named(name.clone()),
+            None => Member::Unnamed(Index { index: i as u32, span: f.span() }),
+        };
+        quote_spanned! { f.span() =>
+            field_roots.push(self.#member.hash_tree_root()?);
+        }
+    });
+    let active_fields = active_fields.iter().map(|active| quote! { #active });
+
+    quote! {
+        fn hash_tree_root(&mut self) -> Result<ssz_rs::Node, ssz_rs::MerkleizationError> {
+            let mut field_roots = vec![];
+            #(#push_by_field)*
+            ssz_rs::internal::progressive_container_root(&field_roots, &[#(#active_fields),*])
+        }
     }
 }
 
@@ -583,7 +687,7 @@ fn validate_derive_data(data: ValidationState) -> ValidationState {
     ValidationState::Validated(data)
 }
 
-#[proc_macro_derive(SimpleSerialize)]
+#[proc_macro_derive(SimpleSerialize, attributes(ssz))]
 pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
 
@@ -603,7 +707,12 @@ pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let deserialize_impl = derive_deserialize_impl(data);
     let is_variable_size_impl = derive_variable_size_impl(data);
     let size_hint_impl = derive_size_hint_impl(data);
-    let merkleization_impl = derive_merkleization_impl(data);
+    let field_count = match data {
+        Data::Struct(ref data) => data.fields.len(),
+        _ => 0,
+    };
+    let active_fields = parse_progressive_container(&input, field_count);
+    let merkleization_impl = derive_merkleization_impl(data, active_fields.as_ref());
     let (inspectable, inspectable_mut, fields_inspect_impl) = derive_fields_inspect(input.clone());
 
     let impl_impl = if generics.params.is_empty() {
@@ -617,6 +726,21 @@ pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     } else {
         let (_, ty_generics, _) = generics.split_for_impl();
         quote! { #name #ty_generics }
+    };
+
+    let (type_class, progressive_active_fields_impl) = match &active_fields {
+        Some(active_fields) => {
+            let active_fields = active_fields.iter().map(|active| quote! { #active });
+            (
+                quote! { ssz_rs::SszTypeClass::ProgressiveContainer },
+                quote! {
+                    fn progressive_active_fields(&self) -> Option<Vec<bool>> {
+                        Some(vec![#(#active_fields),*])
+                    }
+                },
+            )
+        }
+        None => (quote! { ssz_rs::SszTypeClass::Container }, quote! {}),
     };
 
     let expansion = quote! {
@@ -650,8 +774,10 @@ pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
         #impl_impl ssz_rs::SszReflect for #name_impl {
             fn ssz_type_class(&self) -> ssz_rs::SszTypeClass {
-                ssz_rs::SszTypeClass::Container
+                #type_class
             }
+
+            #progressive_active_fields_impl
 
             fn as_field_inspectable(&self) -> Option<&dyn ssz_rs::field_inspect::FieldsInspect> {
                 #inspectable

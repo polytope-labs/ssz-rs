@@ -11,6 +11,7 @@ use crate::{
     lib::*,
     merkleization::{merkleize, MerkleizationError, Node, BYTES_PER_CHUNK},
 };
+use alloc::collections::BTreeMap;
 use sha2::{Digest, Sha256};
 
 /// The number of `active_fields` bits a progressive container commits to. The bitvector is one
@@ -114,6 +115,80 @@ pub fn to_gindex_progressive(chunk_index: usize) -> (u64, u32, usize) {
     }
 }
 
+/// Every node of a progressive container's tree, keyed by generalized index.
+///
+/// Proof generation needs the siblings along a path, and the padded balanced tree the ordinary
+/// merkleizer builds is the wrong shape here, so the tree is materialised directly. The container
+/// root sits at index 1, the spine at 2 and the `active_fields` chunk at 3, which is what makes
+/// the indices from [`to_gindex_progressive`] line up.
+pub fn progressive_container_virtual_tree(
+    field_roots: &[Node],
+    active_fields: &[bool],
+) -> Result<BTreeMap<u64, Node>, MerkleizationError> {
+    if active_fields.len() > ACTIVE_FIELDS_BITS {
+        return Err(MerkleizationError::InputExceedsLimit(ACTIVE_FIELDS_BITS))
+    }
+    if active_fields.iter().filter(|active| **active).count() != field_roots.len() {
+        return Err(MerkleizationError::CannotMerkleize)
+    }
+
+    let mut leaves = vec![Node::default(); active_fields.len()];
+    let mut roots = field_roots.iter();
+    for (slot, active) in active_fields.iter().enumerate() {
+        if *active {
+            leaves[slot] = *roots.next().expect("counts were checked above; qed");
+        }
+    }
+
+    let mut tree = BTreeMap::new();
+    fill_spine(&mut tree, &leaves, 0, 2);
+    tree.insert(3, active_fields_root(active_fields));
+    let root = hash_pair(
+        tree.get(&2).expect("the spine was just filled; qed"),
+        tree.get(&3).expect("the active fields were just inserted; qed"),
+    );
+    tree.insert(1, root);
+    Ok(tree)
+}
+
+/// Fill the spine rooted at `gindex`, which holds `leaves` from `depth` onwards.
+fn fill_spine(tree: &mut BTreeMap<u64, Node>, leaves: &[Node], depth: u32, gindex: u64) {
+    if leaves.is_empty() {
+        tree.insert(gindex, Node::default());
+        return
+    }
+    let base = 1usize << depth;
+    let split = cmp::min(base, leaves.len());
+    fill_balanced(tree, &leaves[..split], depth, gindex << 1);
+    fill_spine(tree, &leaves[split..], depth + 2, (gindex << 1) + 1);
+    let node = hash_pair(
+        tree.get(&(gindex << 1)).expect("the left subtree was just filled; qed"),
+        tree.get(&((gindex << 1) + 1)).expect("the right spine was just filled; qed"),
+    );
+    tree.insert(gindex, node);
+}
+
+/// Fill a balanced subtree of exactly `2^depth` leaves rooted at `gindex`, zero padding whatever
+/// `leaves` does not cover.
+fn fill_balanced(tree: &mut BTreeMap<u64, Node>, leaves: &[Node], depth: u32, gindex: u64) {
+    let width = 1usize << depth;
+    let base = gindex << depth;
+    for slot in 0..width {
+        tree.insert(base + slot as u64, leaves.get(slot).copied().unwrap_or_default());
+    }
+    for level in (0..depth).rev() {
+        let level_base = gindex << level;
+        for slot in 0..(1usize << level) {
+            let index = level_base + slot as u64;
+            let node = hash_pair(
+                tree.get(&(index << 1)).expect("the level below was just filled; qed"),
+                tree.get(&((index << 1) + 1)).expect("the level below was just filled; qed"),
+            );
+            tree.insert(index, node);
+        }
+    }
+}
+
 /// The depth of a generalized index, which is how many siblings a merkle branch for it carries.
 pub fn gindex_depth(gindex: u64) -> u32 {
     debug_assert!(gindex > 0);
@@ -213,5 +288,59 @@ mod tests {
         let roots = vec![Node::default(); 2];
         assert!(progressive_container_root(&roots, &[true; 3]).is_err());
         assert!(progressive_container_root(&roots, &[true, false, true]).is_ok());
+    }
+}
+
+#[cfg(test)]
+mod virtual_tree_tests {
+    use super::*;
+
+    fn field_roots(count: usize) -> Vec<Node> {
+        (0..count).map(|i| Node::from_bytes([(i + 1) as u8; BYTES_PER_CHUNK])).collect()
+    }
+
+    /// The materialised tree has to agree with the direct root computation, otherwise proofs
+    /// generated from it verify against nothing.
+    #[test]
+    fn virtual_tree_root_agrees_with_the_direct_root() {
+        for count in [1usize, 2, 5, 12, 21, 46] {
+            let roots = field_roots(count);
+            let active = vec![true; count];
+            let tree = progressive_container_virtual_tree(&roots, &active).unwrap();
+            assert_eq!(
+                *tree.get(&1).unwrap(),
+                progressive_container_root(&roots, &active).unwrap(),
+                "container of {count} fields"
+            );
+        }
+    }
+
+    /// Walking a field's siblings up to the root is exactly what a verifier does, so this is the
+    /// proof path end to end without going through the reflection machinery.
+    #[test]
+    fn sibling_path_rebuilds_the_root() {
+        let roots = field_roots(46);
+        let active = vec![true; 46];
+        let tree = progressive_container_virtual_tree(&roots, &active).unwrap();
+        let root = *tree.get(&1).unwrap();
+
+        for field in 0..46 {
+            let (gindex, _, _) = to_gindex_progressive(field);
+            let depth = gindex_depth(gindex);
+            let branch = (0..depth)
+                .map(|level| *tree.get(&((gindex >> level) ^ 1)).unwrap())
+                .collect::<Vec<_>>();
+
+            assert!(
+                crate::merkleization::is_valid_merkle_branch(
+                    &roots[field],
+                    branch.iter(),
+                    depth as usize,
+                    gindex as usize,
+                    &root,
+                ),
+                "field {field} at gindex {gindex}"
+            );
+        }
     }
 }

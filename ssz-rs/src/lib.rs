@@ -88,6 +88,7 @@ pub enum ElementsType {
 #[derive(Ord, PartialOrd, Eq, PartialEq, Debug)]
 pub enum SszTypeClass {
     Basic,
+    ProgressiveContainer,
     Bits(ElementsType),
     Elements(ElementsType),
     Container,
@@ -130,7 +131,7 @@ pub mod prelude {
 pub mod internal {
     // exported for derive macro to avoid code duplication...
     pub use crate::{
-        merkleization::{merkleize, mix_in_selector},
+        merkleization::{merkleize, mix_in_selector, progressive_container_root},
         ser::serialize_composite_from_components,
     };
 }
