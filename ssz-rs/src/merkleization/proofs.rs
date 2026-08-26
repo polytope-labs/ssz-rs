@@ -2,7 +2,8 @@ use crate::{
     field_inspect::FieldsIterMut,
     lib::*,
     merkleization::{
-        merkleize_to_virtual_tree, pack_bytes, GeneralizedIndex, Node, BYTES_PER_CHUNK,
+        merkleize_to_virtual_tree, pack_bytes, progressive::progressive_container_virtual_tree,
+        GeneralizedIndex, Node, BYTES_PER_CHUNK,
     },
     Bitlist, Bitvector, ElementsType, MerkleizationError, Merkleized, SimpleSerialize, SszReflect,
     SszTypeClass,
@@ -46,8 +47,34 @@ pub fn generate_proof<T: SimpleSerialize + SszReflect>(
     // next calculate the required proof indices for given indices to prove.
     // return the nodes for those proof indices.
     let type_class = data.ssz_type_class();
+
+    // A progressive container's tree is a spine of growing subtrees paired with its
+    // `active_fields` chunk, so it is materialised whole and the siblings read straight off it
+    // rather than going through the padded balanced tree below.
+    if matches!(type_class, SszTypeClass::ProgressiveContainer) {
+        let active_fields =
+            data.progressive_active_fields().expect("SszTypeClass is a progressive container; qed");
+        let fields =
+            data.as_mut_field_inspectable().expect("SszTypeClass is a progressive container; qed");
+        let mut field_roots = vec![];
+        for (_, (_, field)) in FieldsIterMut::new(fields).enumerate() {
+            field_roots.push(field.hash_tree_root()?);
+        }
+
+        let tree = progressive_container_virtual_tree(&field_roots, &active_fields)?;
+        let indices = indices.iter().cloned().map(GeneralizedIndex).collect::<Vec<_>>();
+        return get_helper_indices(&indices)
+            .into_iter()
+            .map(|GeneralizedIndex(index)| {
+                tree.get(&(index as u64)).copied().ok_or(MerkleizationError::CannotMerkleize)
+            })
+            .collect()
+    }
+
     let leaves = match type_class {
-        SszTypeClass::Basic | SszTypeClass::Union => Err(MerkleizationError::CannotMerkleize)?,
+        SszTypeClass::Basic | SszTypeClass::Union | SszTypeClass::ProgressiveContainer => {
+            Err(MerkleizationError::CannotMerkleize)?
+        }
         SszTypeClass::Container => {
             let fields = data.as_mut_field_inspectable().expect("SszTypeClass is a container; qed");
             let mut leaves = vec![];
@@ -102,6 +129,9 @@ pub fn generate_proof<T: SimpleSerialize + SszReflect>(
                     .downcast_ref::<Bitvector<{ usize::MAX }>>()
                     .expect("Ssz Type class is Bitlist; qed")
                     .pack_bits()?,
+                // Progressive bits hang off the spine rather than a padded tree, so the virtual
+                // tree built below would describe the wrong shape.
+                ElementsType::ProgressiveList => Err(MerkleizationError::CannotMerkleize)?,
             };
 
             let mut leaves = vec![];
@@ -113,6 +143,13 @@ pub fn generate_proof<T: SimpleSerialize + SszReflect>(
             leaves
         }
     };
+
+    // `merkleize_to_virtual_tree` pads the leaves out to a balanced tree, which is not the shape
+    // a progressive type merkleizes into. Refuse rather than hand back a proof that verifies
+    // against a root nobody computes.
+    if matches!(type_class, SszTypeClass::Elements(ElementsType::ProgressiveList)) {
+        return Err(MerkleizationError::CannotMerkleize)
+    }
 
     let virtual_tree = merkleize_to_virtual_tree(leaves);
     let indices = indices.into_iter().cloned().map(GeneralizedIndex).collect::<Vec<_>>();

@@ -11,6 +11,7 @@ mod de;
 mod error;
 mod list;
 mod merkleization;
+mod progressive_list;
 mod ser;
 #[cfg(feature = "serde")]
 mod serde_test;
@@ -25,11 +26,13 @@ pub use de::{Deserialize, DeserializeError};
 pub use error::Error;
 pub use list::List;
 pub use merkleization::{
-    calculate_merkle_root, calculate_multi_merkle_root, field_inspect, generate_proof,
-    get_generalized_index, get_helper_indices, is_valid_merkle_branch, verify_merkle_multiproof,
-    verify_merkle_proof, GeneralizedIndex, MerkleizationError, Merkleized, Node, SszReflect,
-    SszVariableOrIndex,
+    active_fields_root, calculate_merkle_root, calculate_multi_merkle_root, field_inspect,
+    generate_proof, get_generalized_index, get_helper_indices, gindex_depth,
+    is_valid_merkle_branch, merkleize_progressive, progressive_container_root,
+    to_gindex_progressive, verify_merkle_multiproof, verify_merkle_proof, GeneralizedIndex,
+    MerkleizationError, Merkleized, Node, SszReflect, SszVariableOrIndex, ACTIVE_FIELDS_BITS,
 };
+pub use progressive_list::ProgressiveList;
 pub use ser::{Serialize, SerializeError};
 pub use uint::U256;
 pub use utils::*;
@@ -79,11 +82,13 @@ where
 pub enum ElementsType {
     Vector,
     List,
+    ProgressiveList,
 }
 
 #[derive(Ord, PartialOrd, Eq, PartialEq, Debug)]
 pub enum SszTypeClass {
     Basic,
+    ProgressiveContainer,
     Bits(ElementsType),
     Elements(ElementsType),
     Container,
@@ -109,9 +114,10 @@ pub mod prelude {
         error::{InstanceError, TypeError},
         list::List,
         merkleization::{
-            is_valid_merkle_branch, merkleize, mix_in_selector, pack, pack_bytes,
-            MerkleizationError, Merkleized, Node,
+            is_valid_merkle_branch, merkleize, merkleize_progressive, mix_in_selector, pack,
+            pack_bytes, progressive_container_root, MerkleizationError, Merkleized, Node,
         },
+        progressive_list::ProgressiveList,
         ser::{Serialize, SerializeError},
         uint::U256,
         utils::{deserialize, serialize},
@@ -125,7 +131,7 @@ pub mod prelude {
 pub mod internal {
     // exported for derive macro to avoid code duplication...
     pub use crate::{
-        merkleization::{merkleize, mix_in_selector},
+        merkleization::{merkleize, mix_in_selector, progressive_container_root},
         ser::serialize_composite_from_components,
     };
 }

@@ -15,6 +15,13 @@ pub trait SszReflect: Serialize + Merkleized + AsAny {
     /// https://github.com/ethereum/consensus-specs/blob/dev/ssz/simple-serialize.md#typing
     fn ssz_type_class(&self) -> SszTypeClass;
 
+    /// The `active_fields` bitvector, if this is a progressive container. The slots that are off
+    /// stand for fields an earlier version had and this one does not, which is what keeps a
+    /// field's generalized index stable across forks.
+    fn progressive_active_fields(&self) -> Option<Vec<bool>> {
+        None
+    }
+
     /// Should return an iterator that yields the list items, if it's a list.
     fn list_iterator_mut<'a>(
         &'a mut self,

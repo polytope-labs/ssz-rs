@@ -2,6 +2,7 @@ mod cache;
 pub mod field_inspect;
 mod generalized_index;
 mod node;
+pub(crate) mod progressive;
 mod proofs;
 
 use crate::{
@@ -15,6 +16,10 @@ pub use cache::Cache as MerkleCache;
 pub use field_inspect::*;
 pub use generalized_index::*;
 pub use node::Node;
+pub use progressive::{
+    active_fields_root, gindex_depth, merkleize_progressive, progressive_container_root,
+    to_gindex_progressive, ACTIVE_FIELDS_BITS,
+};
 pub use proofs::{
     calculate_merkle_root, calculate_multi_merkle_root, generate_proof, get_helper_indices,
     is_valid_merkle_branch, verify_merkle_multiproof, verify_merkle_proof,
